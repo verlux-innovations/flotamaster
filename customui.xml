@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<customUI xmlns="http://schemas.microsoft.com/office/2009/07/customui" onLoad="OnRibbonLoad">
+  <ribbon>
+    <tabs>
+      <tab id="TabFlotaMaster" label="FlotaMaster">
+        <group id="GroupData" label="Data">
+          <button id="btnImportData" label="Import Data" imageMso="FileOpen" size="large"
+                  onAction="OnImportData"
+                  screentip="Import test data"
+                  supertip="Load metallurgical flotation test data into the workbook."/>
+          <button id="btnExportResults" label="Export Results" imageMso="FileSaveAs" size="large"
+                  onAction="OnExportResults"
+                  screentip="Export analysis"
+                  supertip="Export computed results to CSV or a new workbook."/>
+        </group>
+        <group id="GroupAnalysis" label="Analysis">
+          <button id="btnRunAnalysis" label="Run Analysis" imageMso="ChartLightning" size="large"
+                  onAction="OnRunAnalysis"
+                  screentip="Run full analysis"
+                  supertip="Compute weighted Cu performance, assess impurities and kinetics, and identify the best collector."/>
+          <toggleButton id="togglePreview" label="Live Preview" imageMso="GalleryRepeat" size="normal"
+                        onAction="OnTogglePreview"
+                        getPressed="GetPreviewState"
+                        screentip="Toggle live results preview"
+                        supertip="Enable or disable live preview of intermediate results during analysis."/>
+        </group>
+        <group id="GroupComments" label="Comments">
+          <button id="btnGenerateComments" label="Generate Comments" imageMso="ReviewCommentNext" size="large"
+                  onAction="OnGenerateComments"
+                  screentip="Generate expert comments"
+                  supertip="Produce formatted expert commentary based on analysis results."/>
+        </group>
+        <group id="GroupSettings" label="Settings">
+          <button id="btnSettings" label="Settings" imageMso="Options" size="large"
+                  onAction="OnSettings"
+                  screentip="Configure tool settings"
+                  supertip="Set analysis parameters, file paths, and user preferences."/>
+        </group>
+        <group id="GroupHelp" label="Help &amp; About">
+          <button id="btnHelp" label="Help" imageMso="Help" size="large"
+                  onAction="OnHelp"
+                  screentip="Open help documentation"
+                  supertip="Access the user guide, tutorials, and FAQs."/>
+          <button id="btnAbout" label="About" imageMso="Info" size="large"
+                  onAction="OnAbout"
+                  screentip="About FlotaMaster Analyzer"
+                  supertip="Display version information and developer credits."/>
+        </group>
+      </tab>
+    </tabs>
+  </ribbon>
+</customUI>
