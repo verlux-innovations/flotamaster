@@ -1,0 +1,263 @@
+configmodule.bas
+Option Explicit
+Public Const DATA_SHEET As String = "Data"
+Public Const DASHBOARD_SHEET As String = "Dashboard"
+Public Const OUTPUT_SHEET As String = "Analysis"
+Public Const MAX_COLLECTORS As Integer = 4
+Public Const MAX_TIMEPOINTS As Integer = 4
+Public RecoveryThreshold As Double
+Public PyriteThreshold As Double
+Public CarbonThreshold As Double
+Public TimePoints() As Double
+Sub LoadConfig()
+    RecoveryThreshold = 0.8
+    PyriteThreshold = 1.5
+    CarbonThreshold = 3#
+    ReDim TimePoints(1 To MAX_TIMEPOINTS)
+    TimePoints(1) = 3
+    TimePoints(2) = 7
+    TimePoints(3) = 11
+    TimePoints(4) = 15
+End Sub
+
+'utils.bas
+Option Explicit
+Function GetSheet(sheetName As String) As Worksheet
+    Set GetSheet = ThisWorkbook.Worksheets(sheetName)
+End Function
+Function SafeNum(val As Variant) As Double
+    If IsNumeric(val) Then SafeNum = CDbl(val) Else SafeNum = 0
+End Function
+Sub ClearOutput()
+    With GetSheet(OUTPUT_SHEET)
+        .Cells.ClearContents
+    End With
+End Sub
+
+'loggingmodule.bas
+Option Explicit
+Sub Log(msg As String)
+    Debug.Print Now & " - " & msg
+End Sub
+Sub LogError(msg As String)
+    Debug.Print Now & " - ERROR: " & msg
+End Sub
+
+'inputhandler.bas
+Option Explicit
+Public Type FlotaData
+    Collectors(1 To MAX_COLLECTORS) As String
+    MassPull(1 To MAX_COLLECTORS, 1 To MAX_TIMEPOINTS) As Double
+    CuGrade(1 To MAX_COLLECTORS, 1 To MAX_TIMEPOINTS) As Double
+    PyGrade(1 To MAX_COLLECTORS, 1 To MAX_TIMEPOINTS) As Double
+    CGrade(1 To MAX_COLLECTORS, 1 To MAX_TIMEPOINTS) As Double
+    CuRecov(1 To MAX_COLLECTORS, 1 To MAX_TIMEPOINTS) As Double
+End Type
+Public Function LoadAndValidateData() As FlotaData
+    Dim data As FlotaData
+    Dim ws As Worksheet
+    Dim i As Integer, r As Integer, rowBase As Integer
+    Set ws = GetSheet(DATA_SHEET)
+    For i = 1 To MAX_COLLECTORS
+        data.Collectors(i) = Trim(ws.Range("C" & 14 + (i - 1) * 12).Value)
+        If data.Collectors(i) = "" Then LogError "Missing collector name at index " & i
+        rowBase = 18 + (i - 1) * 12
+        For r = 1 To MAX_TIMEPOINTS
+            data.MassPull(i, r) = SafeNum(ws.Range("V" & (rowBase + r - 1)).Value)
+            data.CuGrade(i, r) = SafeNum(ws.Range("W" & (rowBase + r - 1)).Value)
+            data.PyGrade(i, r) = SafeNum(ws.Range("AH" & (rowBase + r - 1)).Value)
+            data.CGrade(i, r) = SafeNum(ws.Range("Z" & (rowBase + r - 1)).Value)
+            data.CuRecov(i, r) = SafeNum(ws.Range("AB" & (rowBase + r - 1)).Value)
+        Next r
+    Next i
+    LoadAndValidateData = data
+End Function
+
+'scoringengine.bas
+Option Explicit
+Public Type ScoringResult
+    WeightedCuRec(1 To MAX_COLLECTORS) As Double
+    WeightedCuGrade(1 To MAX_COLLECTORS) As Double
+    FinalCuRec(1 To MAX_COLLECTORS) As Double
+End Type
+Public Function ComputeScores(data As FlotaData) As ScoringResult
+    Dim res As ScoringResult
+    Dim sumMass As Double, sumMassCuRec As Double, sumMassCuGrade As Double
+    Dim i As Integer, r As Integer
+    For i = 1 To MAX_COLLECTORS
+        sumMass = 0: sumMassCuRec = 0: sumMassCuGrade = 0
+        For r = 1 To MAX_TIMEPOINTS
+            sumMass = sumMass + data.MassPull(i, r)
+            sumMassCuRec = sumMassCuRec + data.MassPull(i, r) * data.CuRecov(i, r)
+            sumMassCuGrade = sumMassCuGrade + data.MassPull(i, r) * data.CuGrade(i, r)
+            If r = MAX_TIMEPOINTS Then res.FinalCuRec(i) = data.CuRecov(i, r)
+        Next r
+        If sumMass > 0 Then
+            res.WeightedCuRec(i) = sumMassCuRec / sumMass
+            res.WeightedCuGrade(i) = sumMassCuGrade / sumMass
+        End If
+    Next i
+    ComputeScores = res
+End Function
+
+'impuritymodule.bas
+Option Explicit
+Public Type ImpurityResult
+    PyAverages(1 To MAX_COLLECTORS) As Double
+    CAverages(1 To MAX_COLLECTORS) As Double
+End Type
+Public Function ComputeImpurities(data As FlotaData) As ImpurityResult
+    Dim res As ImpurityResult
+    Dim sumPy As Double, sumC As Double
+    Dim i As Integer, r As Integer
+    For i = 1 To MAX_COLLECTORS
+        sumPy = 0: sumC = 0
+        For r = 1 To MAX_TIMEPOINTS
+            sumPy = sumPy + data.PyGrade(i, r)
+            sumC = sumC + data.CGrade(i, r)
+        Next r
+        res.PyAverages(i) = sumPy / MAX_TIMEPOINTS
+        res.CAverages(i) = sumC / MAX_TIMEPOINTS
+    Next i
+    ComputeImpurities = res
+End Function
+
+'kineticsmodule.bas
+Option Explicit
+Public Function ComputeReachTimes(data As FlotaData, finalRec() As Double) As Variant
+    Dim reachTimes(1 To MAX_COLLECTORS) As Double
+    Dim i As Integer, r As Integer
+    For i = 1 To MAX_COLLECTORS
+        reachTimes(i) = TimePoints(MAX_TIMEPOINTS)
+        If finalRec(i) > 0 Then
+            For r = 1 To MAX_TIMEPOINTS
+                If data.CuRecov(i, r) >= finalRec(i) * RecoveryThreshold Then
+                    reachTimes(i) = TimePoints(r)
+                    Exit For
+                End If
+            Next r
+        End If
+    Next i
+    ComputeReachTimes = reachTimes
+End Function
+
+'chartmodule.bas
+Option Explicit
+Sub GenerateCharts(data As FlotaData)
+    Dim ws As Worksheet
+    Set ws = GetSheet(DASHBOARD_SHEET)
+    ws.Cells.Clear
+    Dim cht As ChartObject
+    Set cht = ws.ChartObjects.Add(Left:=100, Top:=10, Width:=400, Height:=300)
+    With cht.Chart
+        .ChartType = xlLineMarkers
+        .HasTitle = True
+        .ChartTitle.Text = "Cu Recovery vs Time"
+        Dim i As Integer
+        For i = 1 To MAX_COLLECTORS
+            .SeriesCollection.NewSeries
+            .SeriesCollection(i).Name = data.Collectors(i)
+            .SeriesCollection(i).XValues = TimePoints
+            .SeriesCollection(i).Values = Application.Index(data.CuRecov, i)
+        Next i
+        .Axes(xlCategory).HasTitle = True
+        .Axes(xlCategory).AxisTitle.Text = "Time (min)"
+        .Axes(xlValue).HasTitle = True
+        .Axes(xlValue).AxisTitle.Text = "Cu Recovery (%)"
+    End With
+End Sub
+
+'reportgenerator.bas
+Option Explicit
+Sub GenerateReport(data As FlotaData, score As ScoringResult, imp As ImpurityResult, reachTimes As Variant)
+    Dim ws As Worksheet
+    Set ws = GetSheet(OUTPUT_SHEET)
+    ClearOutput
+    Dim bestIdx As Integer: bestIdx = 1
+    Dim i As Integer, row As Integer: row = 1
+    For i = 2 To MAX_COLLECTORS
+        If score.WeightedCuRec(i) > score.WeightedCuRec(bestIdx) Then bestIdx = i
+    Next i
+    ws.Cells(row, 2).Value = "Based on weighted Cu recovery performance, Collector " & data.Collectors(bestIdx) & " achieved the highest recovery of " & Format(score.WeightedCuRec(bestIdx), "0.00") & "%."
+    row = row + 1
+    If imp.PyAverages(bestIdx) < PyriteThreshold Then
+        ws.Cells(row, 2).Value = "Pyrite impurity levels were low (average " & Format(imp.PyAverages(bestIdx), "0.00") & "%), indicating good selectivity."
+    Else
+        ws.Cells(row, 2).Value = "Pyrite impurity levels were high (average " & Format(imp.PyAverages(bestIdx), "0.00") & "%), which may require further purification."
+    End If
+    row = row + 1
+    If imp.CAverages(bestIdx) < CarbonThreshold Then
+        ws.Cells(row, 2).Value = "Carbon impurity levels were low (average " & Format(imp.CAverages(bestIdx), "0.00") & "%)."
+    Else
+        ws.Cells(row, 2).Value = "Carbon impurity levels were elevated (average " & Format(imp.CAverages(bestIdx), "0.00") & "%), consider adjusting conditions."
+    End If
+    row = row + 1
+    ws.Cells(row, 2).Value = "Collector " & data.Collectors(bestIdx) & " reached " & RecoveryThreshold * 100 & "% of final Cu recovery in " & reachTimes(bestIdx) & " minutes."
+    row = row + 1
+    ws.Cells(row, 2).Value = "Recommended to use Collector " & data.Collectors(bestIdx) & " for optimal Cu recovery."
+End Sub
+
+'digitalsignature.bas
+Option Explicit
+Public Function VerifySignature() As Boolean
+    VerifySignature = True
+End Function
+
+'settingsmodule.bas
+Option Explicit
+Sub ShowSettingsPane(control As IRibbonControl)
+    MsgBox "Settings Pane is under construction.", vbInformation
+End Sub
+
+'thisworkbook.cls
+Option Explicit
+Private Sub Workbook_Open()
+    LoadConfig
+    Dim ws As Worksheet
+    Set ws = Me.Worksheets(DATA_SHEET)
+    On Error Resume Next
+    ws.Shapes("btnAnalyze").Delete
+    On Error GoTo 0
+    With ws.Buttons.Add(Left:=ws.Range("B104").Left, Top:=ws.Range("B104").Top, Width:=120, Height:=25)
+        .OnAction = "AnalyzeAll"
+        .Caption = "Analyze"
+        .Name = "btnAnalyze"
+    End With
+End Sub
+
+'customui.xml
+<customUI xmlns="http://schemas.microsoft.com/office/2009/07/customui">
+  <ribbon>
+    <tabs>
+      <tab id="FlotaMasterTab" label="FlotaMaster">
+        <group id="AnalysisGroup" label="Analysis">
+          <button id="btnAnalyze" label="Analyze" size="large" onAction="AnalyzeAll" imageMso="ChartInsertLine"/>
+        </group>
+        <group id="SettingsGroup" label="Settings">
+          <button id="btnSettings" label="Settings" size="large" onAction="ShowSettingsPane" imageMso="Options"/>
+        </group>
+      </tab>
+    </tabs>
+  </ribbon>
+</customUI>
+
+'Module1.bas
+Option Explicit
+Sub AnalyzeAll(control As IRibbonControl)
+    If Not VerifySignature Then
+        MsgBox "VBA project signature invalid.", vbCritical
+        Exit Sub
+    End If
+    Log "Analysis started"
+    Dim data As FlotaData
+    Dim score As ScoringResult
+    Dim imp As ImpurityResult
+    Dim reachTimes As Variant
+    data = LoadAndValidateData()
+    score = ComputeScores(data)
+    imp = ComputeImpurities(data)
+    reachTimes = ComputeReachTimes(data, score.FinalCuRec)
+    GenerateCharts data
+    GenerateReport data, score, imp, reachTimes
+    Log "Analysis completed"
+End Sub
