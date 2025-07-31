@@ -1,0 +1,214 @@
+?--- configmodule.bas  
+Option Explicit  
+Public Const DATA_SHEET_NAME As String = "Data"  
+Public Const DASHBOARD_SHEET_NAME As String = "Dashboard"  
+Public Const NUM_COLLECTORS As Integer = 4  
+Public Const POINTS_PER_COLLECTOR As Integer = 4  
+Public Const KINETICS_INDEX As Integer = 2  ? 7-min point (j=1 => index=2)  
+Public Const COMMENTS_START_ROW As Integer = 106  
+Public Const BTN_TOP_CELL As String = "B104"  
+Public Const BTN_LEFT_CELL As String = "B104"  
+Public Const BTN_WIDTH_RANGE As String = "B104:D104"  
+Public Const BTN_HEIGHT_RANGE As String = "B104:B105"  
+Public RowStartOffsets() As Long  
+Public CollectorNameCells() As String  
+
+Public Sub InitConfig()  
+    ReDim RowStartOffsets(1 To NUM_COLLECTORS)  
+    RowStartOffsets(1) = 18: RowStartOffsets(2) = 30: RowStartOffsets(3) = 42: RowStartOffsets(4) = 54  
+    CollectorNameCells = Array("C14", "C26", "C38", "C50")  
+End Sub  
+
+?--- utils.bas  
+Option Explicit  
+Public Function GetWS(name As String) As Worksheet  
+    Set GetWS = ThisWorkbook.Worksheets(name)  
+End Function  
+
+Public Sub EnsureSheet(name As String)  
+    On Error Resume Next  
+    Dim ws As Worksheet: Set ws = ThisWorkbook.Worksheets(name)  
+    If ws Is Nothing Then ThisWorkbook.Worksheets.Add(After:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.Count)).Name = name  
+    On Error GoTo 0  
+End Sub  
+
+?--- inputhandler.bas  
+Option Explicit  
+Public Sub ValidateInput()  
+    Dim ws As Worksheet: Set ws = GetWS(DATA_SHEET_NAME)  
+    Dim i As Integer, j As Integer, r As Long  
+    For i = 1 To NUM_COLLECTORS  
+        For j = 0 To POINTS_PER_COLLECTOR - 1  
+            r = RowStartOffsets(i) + j  
+            If Not IsNumeric(ws.Range("V" & r).Value) Then Err.Raise vbObjectError + 1, , "Mass Pull invalid at row " & r  
+            If Not IsNumeric(ws.Range("W" & r).Value) Then Err.Raise vbObjectError + 1, , "Cu Grade invalid at row " & r  
+            If Not IsNumeric(ws.Range("AH" & r).Value) Then Err.Raise vbObjectError + 1, , "Pyrite invalid at row " & r  
+            If Not IsNumeric(ws.Range("Z" & r).Value) Then Err.Raise vbObjectError + 1, , "Carbon invalid at row " & r  
+            If Not IsNumeric(ws.Range("AB" & r).Value) Then Err.Raise vbObjectError + 1, , "Cu Rec invalid at row " & r  
+        Next j  
+        If Not IsEmpty(ws.Range(CollectorNameCells(i - 1)).Value) Then  
+        Else  
+            Err.Raise vbObjectError + 1, , "Collector name missing in " & CollectorNameCells(i - 1)  
+        End If  
+    Next i  
+End Sub  
+
+?--- scoringengine.bas  
+Option Explicit  
+Public Sub ComputeScores( _  
+    ByRef avgMP() As Double, ByRef avgCG() As Double, ByRef avgPR() As Double, _  
+    ByRef avgCarb() As Double, ByRef avgCR() As Double, ByRef kinetics() As Double, _  
+    ByRef wScores() As Double)  
+
+    Dim ws As Worksheet: Set ws = GetWS(DATA_SHEET_NAME)  
+    Dim i As Integer, j As Integer, r As Long  
+    For i = 1 To NUM_COLLECTORS  
+        Dim sumMP As Double, sumCG As Double, sumPR As Double, sumCGr As Double, sumCR As Double  
+        sumMP = 0: sumCG = 0: sumPR = 0: sumCGr = 0: sumCR = 0  
+        For j = 0 To POINTS_PER_COLLECTOR - 1  
+            r = RowStartOffsets(i) + j  
+            sumMP = sumMP + ws.Range("V" & r).Value  
+            sumCG = sumCG + ws.Range("W" & r).Value  
+            sumPR = sumPR + ws.Range("AH" & r).Value  
+            sumCGr = sumCGr + ws.Range("Z" & r).Value  
+            sumCR = sumCR + ws.Range("AB" & r).Value  
+            If j + 1 = KINETICS_INDEX Then kinetics(i) = ws.Range("AB" & r).Value  
+        Next j  
+        avgMP(i) = sumMP / POINTS_PER_COLLECTOR  
+        avgCG(i) = sumCG / POINTS_PER_COLLECTOR  
+        avgPR(i) = sumPR / POINTS_PER_COLLECTOR  
+        avgCarb(i) = sumCGr / POINTS_PER_COLLECTOR  
+        avgCR(i) = sumCR / POINTS_PER_COLLECTOR  
+        wScores(i) = avgMP(i) * avgCG(i) * avgCR(i)  
+    Next i  
+End Sub  
+
+?--- impuritymodule.bas  
+Option Explicit  
+Public Sub AssessImpurities(ByRef avgPR() As Double, ByRef avgCarb() As Double)  
+    ? placeholder for threshold checks or flags  
+End Sub  
+
+?--- kineticsmodule.bas  
+Option Explicit  
+Public Sub AnalyzeKinetics(ByRef kinetics() As Double)  
+    ? placeholder for kinetics trend analysis  
+End Sub  
+
+?--- chartmodule.bas  
+Option Explicit  
+Public Sub GenerateCharts()  
+    EnsureSheet DASHBOARD_SHEET_NAME  
+    Dim wsDash As Worksheet: Set wsDash = GetWS(DASHBOARD_SHEET_NAME)  
+    wsDash.Cells.Clear  
+    ? placeholder: insert chart creation starting at cell E5  
+End Sub  
+
+?--- loggingmodule.bas  
+Option Explicit  
+Public Sub LogMessage(msg As String)  
+    Dim ws As Worksheet  
+    On Error Resume Next  
+    Set ws = ThisWorkbook.Worksheets("Log")  
+    If ws Is Nothing Then Set ws = ThisWorkbook.Worksheets.Add: ws.Name = "Log"  
+    On Error GoTo 0  
+    Dim lrow As Long: lrow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row + 1  
+    ws.Range("A" & lrow).Value = Format(Now, "yyyy-mm-dd hh:nn:ss") & " - " & msg  
+End Sub  
+
+?--- settingsmodule.bas  
+Option Explicit  
+Public Sub ShowSettingsPane(control As IRibbonControl)  
+    MsgBox "Settings Pane not yet implemented.", vbInformation  
+End Sub  
+
+?--- digitalsignature.bas  
+Option Explicit  
+Public Function VerifySignature() As Boolean  
+    VerifySignature = True ? stub?implement actual digital signature check if needed  
+End Function  
+
+?--- reportgenerator.bas  
+Option Explicit  
+Public Sub GenerateReport()  
+    On Error GoTo ErrHandler  
+    InitConfig  
+    ValidateInput  
+    If Not VerifySignature() Then Err.Raise vbObjectError + 2, , "Digital signature verification failed."  
+    Dim avgMP(1 To NUM_COLLECTORS) As Double, avgCG(1 To NUM_COLLECTORS) As Double  
+    Dim avgPR(1 To NUM_COLLECTORS) As Double, avgCarb(1 To NUM_COLLECTORS) As Double  
+    Dim avgCR(1 To NUM_COLLECTORS) As Double, kinetics(1 To NUM_COLLECTORS) As Double  
+    Dim wScores(1 To NUM_COLLECTORS) As Double  
+    ComputeScores avgMP, avgCG, avgPR, avgCarb, avgCR, kinetics, wScores  
+    AssessImpurities avgPR, avgCarb  
+    AnalyzeKinetics kinetics  
+    GenerateCharts  
+    WriteComments avgCG, avgCarb, avgPR, avgCR, kinetics, wScores  
+    Exit Sub  
+ErrHandler:  
+    LogMessage "Error in GenerateReport: " & Err.Number & " - " & Err.Description  
+    MsgBox "Error: " & Err.Description, vbCritical  
+End Sub  
+
+Private Sub WriteComments( _  
+    ByRef avgCG() As Double, ByRef avgCarb() As Double, ByRef avgPR() As Double, _  
+    ByRef avgCR() As Double, ByRef kinetics() As Double, ByRef wScores() As Double)  
+
+    Dim ws As Worksheet: Set ws = GetWS(DATA_SHEET_NAME)  
+    Dim bestIdx As Integer: bestIdx = 1  
+    Dim i As Integer, outRow As Long  
+    For i = 2 To NUM_COLLECTORS  
+        If wScores(i) > wScores(bestIdx) Then bestIdx = i  
+    Next i  
+    outRow = COMMENTS_START_ROW  
+    ws.Range("B" & outRow & ":B" & outRow + NUM_COLLECTORS - 1).ClearContents  
+    For i = 1 To NUM_COLLECTORS  
+        Dim colName As String  
+        colName = ws.Range(CollectorNameCells(i - 1)).Value  
+        Dim comment As String  
+        comment = "? Collector " & colName  
+        If i = bestIdx Then comment = comment & " (Best Overall)"  
+        comment = comment & ": Weighted Cu Score=" & Format(wScores(i), "0.00") & _  
+            "; Avg Cu Rec=" & Format(avgCR(i) * 100, "0.0") & "%; Avg Cu Grade=" & Format(avgCG(i) * 100, "0.00") & "%; " & _  
+            "Impurities: Pyrite=" & Format(avgPR(i) * 100, "0.00") & "%, Carbon=" & Format(avgCarb(i) * 100, "0.00") & "%; " & _  
+            "7-min Rec=" & Format(kinetics(i) * 100, "0.0") & "%."  
+        ws.Range("B" & outRow).Value = comment  
+        outRow = outRow + 1  
+    Next i  
+End Sub  
+
+?--- thisworkbook.cls  
+Option Explicit  
+Private Sub Workbook_Open()  
+    InitConfig  
+    CreateAnalyzeButton  
+End Sub  
+
+Public Sub CreateAnalyzeButton()  
+    Dim ws As Worksheet: Set ws = GetWS(DATA_SHEET_NAME)  
+    On Error Resume Next  
+    ws.Buttons("btnAnalyze").Delete  
+    On Error GoTo 0  
+    Dim btn As Button  
+    Set btn = ws.Buttons.Add(ws.Range(BTN_LEFT_CELL).Left, ws.Range(BTN_TOP_CELL).Top, _  
+        ws.Range(BTN_WIDTH_RANGE).Width, ws.Range(BTN_HEIGHT_RANGE).Height)  
+    With btn  
+        .Name = "btnAnalyze"  
+        .Caption = "Analyze"  
+        .OnAction = "'" & ThisWorkbook.Name & "'!GenerateReport"  
+    End With  
+End Sub  
+
+?--- customUI.xml  
+<customUI xmlns="http://schemas.microsoft.com/office/2009/07/customui">  
+  <ribbon>  
+    <tabs>  
+      <tab id="flotaTab" label="FlotaMaster">  
+        <group id="analysisGroup" label="Analysis">  
+          <button id="btnAnalyzeRibbon" label="Analyze" size="large" onAction="GenerateReport" imageMso="HappyFace"/>  
+          <button id="btnSettingsRibbon" label="Settings" size="large" onAction="ShowSettingsPane" imageMso="OptionsDialog"/>  
+        </group>  
+      </tab>  
+    </tabs>  
+  </ribbon>  
+</customUI>
